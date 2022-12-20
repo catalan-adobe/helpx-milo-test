@@ -94,18 +94,3 @@ main .last-updated.content {
   padding-top: 32px;
   padding-bottom: 32px;
 }
-
-/*
- * footer
- */
-
-footer {
-  background: #fafafa;
-  color: #505050;
-  font-size: 11px;
-  margin-top: 20px;
-  padding-top: 20px;
-  padding: 20px 0;
-  position: relative;
-  text-align: center;
-}
