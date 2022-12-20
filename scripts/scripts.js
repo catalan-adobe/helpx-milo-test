@@ -128,30 +128,10 @@ function buildAutoBlocks(main) {
   try {
     buildInternalBanner(main);
     fixTableHeaders(main);
-    buildFooter(main);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Auto Blocking failed', error);
   }
-}
-
-// footer
-async function buildFooter(main) {
-  const footer = document.createElement('footer');
-  
-  const div = document.createElement('footer');
-  div.classList.add('content');
-
-  const resp = await fetch(`/footer.plain.html`);
-  const html = await resp.text();
-  div.innerHTML = html; 
-
-  footer.append(div);
-  // const div = document.createElement('p');
-  // div.innerHTML = 'This is the auto footer block';
-  // footer.append(div);
-
-  main.append(footer);
 }
 
 // internal banner
