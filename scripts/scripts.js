@@ -12,8 +12,8 @@
 
 import { setLibs } from './utils.js';
 
-// Add project-wide style path here.
-const STYLES = '';
+// Add project-wide styles here.
+const STYLES = '/styles/styles.css';
 
 // Use '/libs' if your live site maps '/libs' to milo's origin.
 const LIBS = 'https://milo.adobe.com/libs';
@@ -32,10 +32,10 @@ const CONFIG = {
   },
 };
 
-// Load LCP image immediately
+// Default to loading the first image as eager.
 (async function loadLCPImage() {
   const lcpImg = document.querySelector('img');
-  lcpImg?.removeAttribute('loading');
+  lcpImg?.setAttribute('loading', 'eager');
 }());
 
 /*
@@ -57,10 +57,269 @@ const miloLibs = setLibs(LIBS);
   });
 }());
 
-(async function loadPage() {
-  const { loadArea, loadDelayed, setConfig } = await import(`${miloLibs}/utils/utils.js`);
+const { loadArea, loadDelayed, setConfig } = await import(`${miloLibs}/utils/utils.js`);
 
+(async function loadPage() {
   setConfig({ ...CONFIG, miloLibs });
+
   await loadArea();
+
+  buildAutoBlocks(document.body);
+
+  // normalizeHeadings(document, ['h2', 'h3', 'h4', 'h5', 'h6'])
+  /*
+    extra features start
+  */
+
+  document.querySelectorAll('div:not([class]):not([id]):empty').forEach((empty) => empty.remove());
+
+  /*
+    extra features end
+  */
+
   loadDelayed();
 }());
+
+/**
+ * Normalizes all headings within a container element.
+ * @param {Element} el The container element
+ * @param {[string]]} allowedHeadings The list of allowed headings (h1 ... h6)
+ */
+export function normalizeHeadings(el, allowedHeadings) {
+  const allowed = allowedHeadings.map((h) => h.toLowerCase());
+  el.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((tag) => {
+    const h = tag.tagName.toLowerCase();
+    if (allowed.indexOf(h) === -1) {
+      // current heading is not in the allowed list -> try first to "promote" the heading
+      let level = parseInt(h.charAt(1), 10) - 1;
+      while (allowed.indexOf(`h${level}`) === -1 && level > 0) {
+        level -= 1;
+      }
+      if (level === 0) {
+        // did not find a match -> try to "downgrade" the heading
+        while (allowed.indexOf(`h${level}`) === -1 && level < 7) {
+          level += 1;
+        }
+      }
+      if (level !== 7) {
+        tag.outerHTML = `<h${level} id="${tag.id}">${tag.textContent}</h${level}>`;
+      }
+    }
+  });
+}
+
+
+
+/*
+ * ------------------------------------------------------------
+ * helpx-internal specifics
+ * ------------------------------------------------------------
+ */
+
+/*
+ * global blocks
+ */
+
+/**
+ * Builds all synthetic blocks in a container element.
+ * @param {Element} main The container element
+ */
+function buildAutoBlocks(main) {
+  try {
+    buildInternalBanner(main);
+    fixTableHeaders(main);
+    buildFooter(main);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Auto Blocking failed', error);
+  }
+}
+
+// footer
+async function buildFooter(main) {
+  const footer = document.createElement('footer');
+  
+  const div = document.createElement('footer');
+  div.classList.add('content');
+
+  const resp = await fetch(`/footer.plain.html`);
+  const html = await resp.text();
+  div.innerHTML = html; 
+
+  footer.append(div);
+  // const div = document.createElement('p');
+  // div.innerHTML = 'This is the auto footer block';
+  // footer.append(div);
+
+  main.append(footer);
+}
+
+// internal banner
+async function buildInternalBanner(block) {
+  const title = block.querySelector('.page-title');
+  
+  if (title) {
+    const banner = document.createElement('div');
+    banner.classList.add('section', 'internal-banner');
+    
+    const div = document.createElement('p');
+    div.innerHTML = 'INTERNAL';
+    div.classList.add("banner");
+    banner.append(div);
+    title.insertAdjacentElement('afterend', banner);
+    
+    const text = document.createElement('div');
+    text.classList.add("content", "last-updated");
+    text.innerHTML = '&nbsp;';
+    banner.append(text);
+    
+    const index = await fetchIndex('query-index');
+    const found = index.data.find((entry) => entry.path.indexOf(window.location.pathname) > -1);
+    if (found) {
+      var dateFormat = new Date(parseInt(found.lastModified + '000', 10));
+      text.innerHTML = `Last updated on ${getMonthShortName((dateFormat.getMonth()))} ${dateFormat.getDate()}, ${dateFormat.getFullYear()}`; 
+    }
+  }
+}
+
+// tables
+function fixTableHeaders(main) {
+  var tables = main.querySelectorAll('table');
+  tables.forEach((t) => {
+    // remove empty lines
+    var lines = t.querySelectorAll('tbody tr');
+    lines.forEach((l) => {
+      const content = l.innerHTML.replaceAll('<td></td>', '').trim();
+      if (content === '') {
+          l.remove();
+      }
+    });
+
+    // fix header rowspan
+    const headerFirstRow = t.querySelector('thead tr:first-of-type');
+    const nHeaderTDs = headerFirstRow.querySelectorAll('th')?.length;
+    const bodyFirstRow = t.querySelector('tbody tr:first-of-type');
+    const nBodyTDs = bodyFirstRow.querySelectorAll('td')?.length;
+    if (nHeaderTDs === 2 && nBodyTDs === 3) {
+        const tHead = t.querySelector('thead');
+        if (tHead) {
+            tHead.appendChild(bodyFirstRow);
+            bodyFirstRow.querySelector('td:empty')?.remove();
+            tHead.querySelector('tr:first-of-type th:first-of-type')?.setAttribute('rowspan', 2);
+        }
+    }
+});
+}
+
+// "on this page" section
+function buildOnThisPageSection(main) {
+  const headings = main.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headings.forEach((h) => {
+    if (h.closest('.page-title') === null) {
+      console.log(h.textContent);
+      const src = h.textContent.toLowerCase().replaceAll(' ', '-');
+      const anchor = document.createElement('a');
+      anchor.setAttribute('href', '#' + src);
+      h.insertAdjacentElement('beforeBegin', anchor);
+    }
+});
+}
+
+
+
+/*
+ * utils
+ */
+
+/**
+ * Sanitizes a name for use as class name.
+ * @param {*} name The unsanitized name
+ * @returns {string} The class name
+ */
+export function toClassName(name) {
+  return name && typeof name === 'string'
+    ? name.toLowerCase().replace(/[^0-9a-z]/gi, '-')
+    : '';
+}
+
+/**
+ * Extracts the config from a block.
+ * @param {Element} block The block element
+ * @returns {object} The block config
+ */
+ export function readBlockConfig(block) {
+  const config = {};
+  block.querySelectorAll(':scope>div').forEach((row) => {
+    if (row.children) {
+      const cols = [...row.children];
+      if (cols[1]) {
+        const col = cols[1];
+        const name = toClassName(cols[0].textContent);
+        let value = '';
+        if (col.querySelector('a')) {
+          const as = [...col.querySelectorAll('a')];
+          if (as.length === 1) {
+            value = as[0].href;
+          } else {
+            value = as.map((a) => a.href);
+          }
+        } else if (col.querySelector('p')) {
+          const ps = [...col.querySelectorAll('p')];
+          if (ps.length === 1) {
+            value = ps[0].textContent;
+          } else {
+            value = ps.map((p) => p.textContent);
+          }
+        } else value = row.children[1].textContent;
+        config[name] = value;
+      }
+    }
+  });
+  return config;
+}
+
+export async function fetchIndex(indexFile, pageSize = 500) {
+  const handleIndex = async (offset) => {
+    const resp = await fetch(`/${indexFile}.json?limit=${pageSize}&offset=${offset}`);
+    const json = await resp.json();
+
+    const newIndex = {
+      complete: (json.limit + json.offset) === json.total,
+      offset: json.offset + pageSize,
+      promise: null,
+      data: [...window.index[indexFile].data, ...json.data],
+    };
+
+    return newIndex;
+  };
+
+  window.index = window.index || {};
+  window.index[indexFile] = window.index[indexFile] || {
+    data: [],
+    offset: 0,
+    complete: false,
+    promise: null,
+  };
+
+  // Return index if already loaded
+  if (window.index[indexFile].complete) {
+    return window.index[indexFile];
+  }
+
+  // Return promise if index is currently loading
+  if (window.index[indexFile].promise) {
+    return window.index[indexFile].promise;
+  }
+
+  window.index[indexFile].promise = handleIndex(window.index[indexFile].offset);
+  const newIndex = await (window.index[indexFile].promise);
+  window.index[indexFile] = newIndex;
+
+  return newIndex;
+}
+
+function getMonthShortName(monthNo) {
+  const date = new Date();
+  date.setMonth(monthNo - 1);
+  return date.toLocaleString('en-US', { month: 'short' });
+}
